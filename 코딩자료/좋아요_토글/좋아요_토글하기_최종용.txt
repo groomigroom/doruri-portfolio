@@ -1,0 +1,29 @@
+controller
+fetch
+/login/login-data
+
+@GetMapping("/song-data/{id}")
+public ResponseEntity<?> likeSongMainToggle(@PathVariable("id") String id, @RequestBody LikeLinkRequest request, HttpSession session) {
+    User loginUser = (User) session.getAttribute("loginUser");???
+    if (
+    //https://github.com/groomigroom/Doruri_spring_boot/blob/main/%EC%B6%94%EA%B0%80%ED%95%A0%EA%B1%B0/%EC%A2%8B%EC%95%84%EC%9A%94%ED%86%A0%EA%B8%80%ED%95%98%EA%B8%B0.txt
+107번줄부터
+
+}
+
+
+---------------------
+타임리프에서
+
+<script th:inline="javascript">
+    function loadData() {
+        // 타임리프 URL 표현식(@{})과 자바스크립트 인라인 주석 조합
+        const requestUrl = /*[[@{/api/get-data(id=${userId})}]]*/ '/api/default-url';
+
+        fetch(requestUrl)
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+            });
+    }
+</script>
