@@ -1,0 +1,161 @@
+네. 그 에러는 정상적인 반응입니다. **`like_userid`에 FK가 걸려 있어서 바로 `MODIFY`할 수 없는 상태**입니다.
+
+ 순서를 **FK 삭제 → 컬럼 수정 → FK 재생성**으로 해야 합니다.
+
+ 다만 먼저 실제 컬럼 타입을 확인하는 게 안전합니다.
+
+ ### 1\. 현재 구조 확인
+
+```
+SHOW CREATE TABLE like_link_entity;
+```
+
+ 그리고:
+
+```
+SHOW CREATE TABLE login_users;
+```
+
+ 여기서 `like_link_entity`에 이런 부분이 있을 겁니다.
+
+```
+CONSTRAINT `like_link_entity_ibfk_1`
+FOREIGN KEY (`like_userid`)
+REFERENCES `login_users` (`userid`)
+```
+
+ ### 2\. FK 삭제
+
+ 에러 메시지에서 FK 이름이 정확히:
+
+```
+like_link_entity_ibfk_1
+```
+
+ 이므로:
+
+```
+ALTER TABLE like_link_entity
+DROP FOREIGN KEY like_link_entity_ibfk_1;
+```
+
+ 를 실행합니다.
+
+ ### 3\. 컬럼 수정
+
+ `LoginUsers`가:
+
+```
+@Id
+@Column(length = 50)
+private String userid;
+```
+
+ 이므로 `like_userid`도 `VARCHAR(50)`으로 맞추는 게 맞습니다.
+
+```
+ALTER TABLE like_link_entity
+MODIFY COLUMN like_userid VARCHAR(50);
+```
+
+ ### 4. FK 다시 생성
+
+```
+ALTER TABLE like_link_entity
+ADD CONSTRAINT like_link_entity_ibfk_1
+FOREIGN KEY (like_userid)
+REFERENCES login_users(userid);
+```
+
+ 이렇게 하면 됩니다.
+
+---
+
+ ### ⚠️ 단, 한 가지 확인
+
+ `login_users.userid`가 정말 `VARCHAR(50)`인지 확인하세요.
+
+```
+SHOW COLUMNS FROM login_users LIKE 'userid';
+```
+
+ 정상이라면 대략:
+
+```
+Field    Type          Null    Key
+userid   varchar(50)   NO      PRI
+```
+
+ 가 나와야 합니다.
+
+ 그리고:
+
+```
+SHOW COLUMNS FROM like_link_entity LIKE 'like_userid';
+```
+
+ 가:
+
+```
+like_userid   varchar(50)
+```
+
+ 이면 Entity와 DB 구조가 맞는 상태입니다.
+
+---
+
+ ### 그리고 Entity는 이렇게 바꾸는 것을 추천합니다
+
+ 현재:
+
+```
+private LoginUsers likeUserid;
+```
+
+ 보다는:
+
+```
+@ManyToOne
+@JoinColumn(name = "like_userid", referencedColumnName = "userid")
+private LoginUsers likeUser;
+```
+
+ 가 좋습니다.
+
+ 즉:
+
+```
+@Getter
+@Setter
+@Entity
+public class LikeLinkEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    private String originalLink;
+
+    @ManyToOne
+    @JoinColumn(name = "like_userid", referencedColumnName = "userid")
+    private LoginUsers likeUser;
+}
+```
+
+ 이렇게요.
+
+ **중요한 건 지금 `MODIFY`만 바로 실행하면 안 되고, 반드시 FK를 먼저 제거해야 한다는 겁니다.**
+
+```
+FK 삭제
+   ↓
+like_userid VARCHAR(50)으로 수정
+   ↓
+FK 재생성
+   ↓
+애플리케이션 재실행
+```
+
+ 이 순서로 진행하세요.
+
+ 그리고 만약 **`DROP FOREIGN KEY` 후 `MODIFY` 단계에서 또 에러가 난다면**, `SHOW CREATE TABLE like_link_entity;` 결과 전체를 보내주세요. 그 결과를 보면 정확한 SQL을 맞춰드릴 수 있습니다.
