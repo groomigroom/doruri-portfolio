@@ -1,0 +1,497 @@
+네. Spring Boot 세션을 사용한다면 JavaScript에서 userId를 직접 data-user-id로 가져올 필요가 없습니다.
+브라우저가 세션 쿠키를 가지고 있고, Spring Boot가 그 세션에서 로그인 사용자를 꺼내도록 만드는 방식이 더 좋습니다.
+
+현재 코드에서는:
+
+const boardId = likeBtn.dataset.boardId;
+const userId = likeBtn.dataset.userId;
+
+여기서 boardId는 그대로 필요하지만 userId는 제거하면 됩니다.
+
+1. JavaScript
+
+const likeBtn = document.getElementById('like-btn');
+
+likeBtn.addEventListener('click', async () => {
+
+    // 게시글 번호만 HTML에서 가져옴
+    const boardId = likeBtn.dataset.boardId;
+
+    const isLiked = likeBtn.classList.contains('active');
+
+    const url = '/api/likes';
+    const method = isLiked ? 'DELETE' : 'POST';
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                boardId: boardId
+            })
+        });
+
+        if (response.ok) {
+
+            if (isLiked) {
+                likeBtn.classList.remove('active');
+                likeBtn.querySelector('.icon').textContent = '🖤';
+
+                alert('좋아요를 취소했습니다.');
+
+            } else {
+                likeBtn.classList.add('active');
+                likeBtn.querySelector('.icon').textContent = '❤️';
+
+                alert('좋아요를 등록했습니다.');
+            }
+
+        } else {
+            alert('처리에 실패했습니다.');
+        }
+
+    } catch (error) {
+        console.error('네트워크 에러:', error);
+    }
+});
+
+즉, 요청 데이터가
+
+{
+    "boardId": 10
+}
+
+이렇게 됩니다.
+
+userId는 보내지 않습니다.
+
+
+---
+
+2. Spring Boot에서 세션의 사용자 가져오기
+
+예를 들어 로그인할 때 세션에 다음처럼 저장했다고 해보겠습니다.
+
+session.setAttribute("userId", user.getUserid());
+
+그러면 좋아요 API에서:
+
+@PostMapping("/api/likes")
+public ResponseEntity<?> addLike(
+        @RequestBody LikeRequest request,
+        HttpSession session) {
+
+    String userId = (String) session.getAttribute("userId");
+
+    if (userId == null) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body("로그인이 필요합니다.");
+    }
+
+    System.out.println("게시글 ID : " + request.getBoardId());
+    System.out.println("사용자 ID : " + userId);
+
+    // 좋아요 저장
+    // likeService.addLike(request.getBoardId(), userId);
+
+    return ResponseEntity.ok().build();
+}
+
+여기서 중요한 부분은:
+
+HttpSession session
+
+그리고
+
+String userId = (String) session.getAttribute("userId");
+
+입니다.
+
+
+---
+
+3. DELETE도 똑같이 처리
+
+@DeleteMapping("/api/likes")
+public ResponseEntity<?> deleteLike(
+        @RequestBody LikeRequest request,
+        HttpSession session) {
+
+    String userId = (String) session.getAttribute("userId");
+
+    if (userId == null) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body("로그인이 필요합니다.");
+    }
+
+    // 좋아요 삭제
+    // likeService.deleteLike(request.getBoardId(), userId);
+
+    return ResponseEntity.ok().build();
+}
+
+그러면 실제 구조는 이렇게 됩니다.
+
+브라우저
+   │
+   │ boardId만 전송
+   ▼
+Spring Boot
+   │
+   ├── request.getBoardId()
+   │
+   └── session.getAttribute("userId")
+             │
+             ▼
+        현재 로그인 사용자
+
+왜 이 방법이 좋은가?
+
+기존 방식:
+
+{
+    boardId: 10,
+    userId: "groom123"
+}
+
+사용자가 개발자 도구에서 userId를 마음대로 바꿀 수 있습니다.
+
+{
+    boardId: 10,
+    userId: "다른사람ID"
+}
+
+그러면 보안 문제가 생깁니다.
+
+반면 세션 방식은:
+
+{
+    boardId: 10
+}
+
+만 보내고,
+
+String userId =
+    (String) session.getAttribute("userId");
+
+Spring Boot가 현재 로그인한 세션의 사용자를 가져오기 때문에 훨씬 안전합니다.
+
+
+---
+
+4. 현재 공부하고 있는 Spring 구조라면
+
+예전에 사용했던 로그인 세션이
+
+req.session.users = {
+    userid,
+    username,
+    score
+}
+
+형태였다면, Spring Boot에서는 비슷하게 다음처럼 구성할 수 있습니다.
+
+session.setAttribute("users", user);
+
+그리고:
+
+LoginUsers user =
+    (LoginUsers) session.getAttribute("users");
+
+String userId = user.getUserid();
+
+따라서 지금 만들고 있는 게시글 좋아요 기능이라면 개인적으로는 다음 구조를 추천합니다.
+
+JavaScript
+   ↓
+boardId
+   ↓
+Spring Controller
+   ↓
+HttpSession
+   ↓
+LoginUsers
+   ↓
+userId
+   ↓
+LikeService
+   ↓
+LikeRepository
+   ↓
+MySQL
+
+이렇게 하면 userId를 JavaScript에 노출하지 않고 Spring 세션으로 좋아요의 주인을 확인할 수 있습니다.
+
+
+mmmmmmmmmmm
+
+
+
+네. 지금 작성하신 LikeLinkEntity를 보면 이미 좋아요와 로그인 사용자 사이의 @ManyToOne 관계는 잘 잡으셨습니다.
+
+다만 지금 상태에서는 어떤 게시글에 좋아요를 눌렀는지를 구분할 값이 필요합니다.
+
+현재:
+
+@Getter
+@Setter
+@Entity
+public class LikeLinkEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    private String originalLink;
+
+    @ManyToOne
+    @JoinColumn(name = "like_userid", referencedColumnName = "userid")
+    private LoginUsers likeUserid;
+}
+
+여기서 의미를 보면:
+
+id → 좋아요 자체의 PK
+
+originalLink → 좋아요를 누른 게시글/페이지를 식별
+
+likeUserid → 좋아요를 누른 사용자
+
+
+입니다.
+
+1. 지금 구조 그대로 Service를 만들면
+
+Repository:
+
+package groomi.groomgroom.LikeLink;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface LikeLinkRepository
+        extends JpaRepository<LikeLinkEntity, Integer> {
+
+    boolean existsByOriginalLinkAndLikeUserid_Userid(
+            String originalLink,
+            String userid
+    );
+
+    void deleteByOriginalLinkAndLikeUserid_Userid(
+            String originalLink,
+            String userid
+    );
+}
+
+그리고 Service:
+
+package groomi.groomgroom.LikeLink;
+
+import groomi.groomgroom.Login.LoginUsers;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class LikeLinkService {
+
+    private final LikeLinkRepository likeLinkRepository;
+
+    public void addLike(String originalLink, LoginUsers user) {
+
+        boolean exists =
+                likeLinkRepository
+                        .existsByOriginalLinkAndLikeUserid_Userid(
+                                originalLink,
+                                user.getUserid()
+                        );
+
+        if (!exists) {
+
+            LikeLinkEntity like = new LikeLinkEntity();
+
+            like.setOriginalLink(originalLink);
+            like.setLikeUserid(user);
+
+            likeLinkRepository.save(like);
+        }
+    }
+
+    public void deleteLike(String originalLink, LoginUsers user) {
+
+        likeLinkRepository
+                .deleteByOriginalLinkAndLikeUserid_Userid(
+                        originalLink,
+                        user.getUserid()
+                );
+    }
+}
+
+이렇게 할 수 있습니다.
+
+
+---
+
+2. Controller에서는 세션에서 LoginUsers를 가져옵니다
+
+예를 들어 로그인할 때 세션에:
+
+session.setAttribute("users", loginUsers);
+
+라고 저장했다면 좋아요 Controller에서:
+
+@PostMapping("/api/likes")
+public ResponseEntity<?> addLike(
+        @RequestBody LikeRequest request,
+        HttpSession session) {
+
+    LoginUsers user =
+            (LoginUsers) session.getAttribute("users");
+
+    if (user == null) {
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body("로그인이 필요합니다.");
+    }
+
+    likeLinkService.addLike(
+            request.getOriginalLink(),
+            user
+    );
+
+    return ResponseEntity.ok().build();
+}
+
+삭제:
+
+@DeleteMapping("/api/likes")
+public ResponseEntity<?> deleteLike(
+        @RequestBody LikeRequest request,
+        HttpSession session) {
+
+    LoginUsers user =
+            (LoginUsers) session.getAttribute("users");
+
+    if (user == null) {
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body("로그인이 필요합니다.");
+    }
+
+    likeLinkService.deleteLike(
+            request.getOriginalLink(),
+            user
+    );
+
+    return ResponseEntity.ok().build();
+}
+
+
+---
+
+3. DTO도 userId를 없앱니다
+
+@Getter
+@Setter
+public class LikeRequest {
+
+    private String originalLink;
+}
+
+JavaScript에서는:
+
+body: JSON.stringify({
+    originalLink: originalLink
+})
+
+만 보내면 됩니다.
+
+즉,
+
+JavaScript
+     │
+     │ originalLink
+     ▼
+Controller
+     │
+     ├── originalLink ← 요청에서 가져옴
+     │
+     └── LoginUsers ← 세션에서 가져옴
+              │
+              ▼
+          LikeService
+              │
+              ▼
+       LikeLinkEntity
+
+이 구조입니다.
+
+
+---
+
+4. 그런데 originalLink가 정말 게시글 식별자인지 확인해야 합니다
+
+여기가 현재 Entity에서 가장 중요한 부분입니다.
+
+만약 originalLink가
+
+triples-main-2026-06-01
+
+같은 페이지를 식별하는 값이라면 지금 구조를 그대로 사용할 수 있습니다.
+
+예를 들어 DB가:
+
+id	original_link	like_userid
+
+1	triples-main-2026-06-01	user01
+2	triples-main-2026-06-01	user02
+3	triples-main-2026-06-01	user03
+4	aespa-main-2026-06-01	user01
+
+
+이런 식으로 됩니다.
+
+그러면
+
+existsByOriginalLinkAndLikeUserid_Userid(...)
+
+로
+
+> "이 사용자가 이 페이지에 이미 좋아요를 눌렀는가?"
+
+
+
+를 확인할 수 있습니다.
+
+
+---
+
+그리고 제가 추천하는 것은
+
+현재 프로젝트에서 SubWritesEntity처럼 게시글 Entity가 이미 따로 있다면 originalLink 문자열보다는 게시글 Entity를 @ManyToOne으로 연결하는 방식입니다.
+
+예를 들어:
+
+@ManyToOne
+@JoinColumn(name = "sub_writes_id")
+private SubWritesEntity subWrites;
+
+그리고
+
+@ManyToOne
+@JoinColumn(name = "like_userid", referencedColumnName = "userid")
+private LoginUsers likeUserid;
+
+로 하면
+
+LikeLinkEntity
+ ├── id
+ ├── subWrites → SubWritesEntity
+ └── likeUserid → LoginUsers
+
+가 됩니다.
+
+이렇게 하면 "어떤 게시글 + 어떤 사용자"의 좋아요인지가 JPA 관계로 명확해집니다.
+
+지금 작성하신 LikeLinkEntity를 최대한 유지하면서 구현하려면 originalLink 방식으로 먼저 완성해도 괜찮습니다. 특히 지금처럼 페이지의 고유 문자열을 좋아요 대상 ID처럼 사용하고 있다면요.
