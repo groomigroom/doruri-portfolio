@@ -1,0 +1,20 @@
+LikeLinkController를 이렇게 수정하기 #####
+
+import java.security.Principal; // 💡 임포트 필요
+
+@PostMapping("/like/delete")
+public ResponseEntity<?> deleteLike(@RequestBody LikeRequest request, Principal principal) {
+    
+    // 💡 로그인을 안 한 익명 사용자인지 방어 코드 작성
+    if (principal == null) {
+        return ResponseEntity.status(401).body("로그인이 필요한 서비스입니다.");
+    }
+    
+    // 💡 시큐리티가 보증하는 절대 위조 불가능한 로그인 유저 ID 추출
+    String userId = principal.getName(); 
+    
+    System.out.println("현재 좋아요 취소를 요청한 유저 ID: " + userId);
+    
+    // ... 이후 레포지토리 연동 및 좋아요 삭제 로직 수행 ...
+    return ResponseEntity.ok().build();
+}
