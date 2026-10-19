@@ -1,0 +1,47 @@
+LikeRequest와 같은 DTO(Data Transfer Object) 코드가 필요한 핵심 이유는 클라이언트의 요청 데이터(입력값)를 엔티티(DB 테이블과 매핑되는 객체)와 분리하여 안전하고 유연하게 처리하기 위함입니다. [1, 2] 
+좋아요 기능의 구체적인 예시와 함께 DTO를 써야 하는 이유를 정리해 드립니다.
+------------------------------
+## 1. 보안 및 불필요한 데이터 노출 방지
+좋아요 요청을 보낼 때 클라이언트가 보내야 하는 정보는 보통 게시글 ID(postId)와 사용자 ID(userId) 정도로 단순합니다.
+
+* 
+* DTO가 없다면: DB의 Like 엔티티 객체를 그대로 컨트롤러의 파라미터로 받아야 할 수 있습니다. 이때 악의적인 사용자가 좋아요 생성일자(createdAt), 내부 일련번호(id) 같은 민감한 필드를 조작해서 요청에 섞어 보내면 시스템 오작동이나 데이터 오염이 발생할 수 있습니다.
+* DTO를 쓰면: LikeRequest에 딱 필요한 postId, userId만 정의해 둠으로써 외부의 불필요한 접근을 차단하고 시스템을 보호합니다. [1, 2, 3] 
+* 
+
+## 2. 데이터 유효성 검증(Validation)의 분리
+입력값이 올바른지 검증하는 로직을 엔티티와 깔끔하게 분리할 수 있습니다. [1] 
+
+* 
+* 좋아요 요청 시 postId나 userId는 반드시 필수값(@NotNull)이어야 합니다.
+* 엔티티 클래스에 DB 매핑 설정(@Id, @ManyToOne)과 입력값 검증 설정(@NotNull, @Positive)을 모두 넣으면 코드가 복잡해지고 지저분해집니다.
+* LikeRequest DTO에만 @NotNull 같은 검증 어노테이션을 붙여 처리하면 "요청 데이터 검증"이라는 역할만 캡슐화할 수 있습니다. [1, 4] 
+* 
+
+## 3. 클라이언트 요구사항 변화에 유연한 대응 (유지보수성)
+화면이나 API 스펙은 언제든 바뀔 수 있습니다. [1, 3] 
+
+* 
+* 만약 "좋아요 기능에 이모지 종류(하트, 슬픔, 기쁨 등)를 추가해 주세요"라는 요구사항이 생기면, DTO에 emojiType이라는 필드만 하나 추가하면 됩니다.
+* DB 구조(엔티티)를 건드리지 않고도 클라이언트와 서버 간의 데이터 주고받는 규격(계약)을 쉽게 변경할 수 있어서 안정적인 개발이 가능합니다. [3, 5] 
+* 
+
+## 4. 코드의 가독성과 명확한 API 설계
+LikeRequest라는 이름 자체가 "이 객체는 좋아요 요청 시 사용되는 데이터 주머니"라는 목적을 명확하게 나타냅니다. 코드를 처음 보는 개발자도 이 DTO만 보면 "좋아요를 누를 때 어떤 데이터가 오가는구나"를 한눈에 파악할 수 있어 협업과 디버깅이 쉬워집니다. [4, 6] 
+------------------------------
+## 요약 구조 비교
+
+| 구분 | 엔티티 (Entity) | 요청 DTO (LikeRequest) |
+|---|---|---|
+| 목적 | 데이터베이스 테이블 구조와 매핑 | 클라이언트가 보낸 데이터 전송 및 검증 |
+| 포함 필드 | id, member, post, createdAt 등 전체 구조 | postId, memberId 등 딱 필요한 데이터만 |
+| 변경 주기 | 거의 변경되지 않음 (신중해야 함) | UI나 비즈니스 요구사항에 따라 자주 변경됨 |
+
+혹시 지금 작성 중이신 LikeRequest의 코드 예시나 프로젝트 환경(Spring Boot, Node.js 등)을 공유해 주시면, 검증(Validation) 로직이나 엔티티 변환 코드를 어떻게 더 깔끔하게 작성할 수 있는지 구체적으로 조언해 드릴 수 있습니다. 어떤 부분이 가장 궁금하신가요?
+
+[1] [https://my-codinglog.tistory.com](https://my-codinglog.tistory.com/entry/DTO-%EB%A5%BC-%EC%82%AC%EC%9A%A9%ED%95%B4%EC%95%BC-%ED%95%98%EB%8A%94-%EC%9D%B4%EC%9C%A0)
+[2] [https://kr.linkedin.com](https://kr.linkedin.com/pulse/java-development-best-practices-dto-vs-entity-karabo-sambo-u0hnf?tl=ko)
+[3] [https://takimon.tistory.com](https://takimon.tistory.com/34)
+[4] [https://hhongyeahh.tistory.com](https://hhongyeahh.tistory.com/70)
+[5] [https://www.reddit.com](https://www.reddit.com/r/dotnet/comments/1c8lno0/why_do_we_use_dtos_instead_of_getting_only_the/?tl=ko)
+[6] [https://www.yolog.co.kr](https://www.yolog.co.kr/post/frontend-dto/)
