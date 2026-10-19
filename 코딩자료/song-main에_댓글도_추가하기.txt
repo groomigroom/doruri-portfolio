@@ -1,0 +1,134 @@
+
+@RequestMapping("/song-main")
+@RequiredArgsConstructor
+@Controller
+public class SongMainController {
+private final SongMainService songMainService;
+
+@GetMapping(value = "/{id}")
+public String songMainDetail(Model model, @PathVariable("id") String id) {
+SongMainEntity songMainEntity = this.songMainService.getSongMainEntity(id);
+
+model.addAttribute("songMainEntity", songMainEntity);
+return "SongMain/SongMain";
+}
+}
+위와 같이 타임리프로 매핑된 페이지 에다가
+
+select *
+from sub_writes_entity
+where original_link = 현재 페이지?
+order by write_date;
+위와 같이 댓글 목록을 조회해서 같이 보여주는 법?
+
+타임리프 페이지에 게시글 상세 정보(SongMainEntity)와 함께 해당 게시글의 댓글 목록을 같이 조회해서 전달하는 방법은 간단합니다.
+현재 URL 경로 변수인 {id}가 SQL 쿼리의 original_link에 매핑되는 구조이므로, 이를 활용하여 댓글 목록을 조회한 후 model.addAttribute로 함께 넘겨주면 됩니다.
+가장 깔끔하고 유지보수하기 좋은 3단계 구현 방법을 안내해 드립니다.
+
+───
+
+1. Repository에 댓글 조회 메서드 추가
+SubWritesEntity를 처리하는 Repository(예: SubWritesRepository)에 originalLink로 검색하고 날짜 순으로 정렬하는 메서드를 정의합니다. Spring Data JPA를 사용하면 메서드 이름만으로 쿼리를 생성할 수 있습니다.
+java
+import org.springframework.data.jpa.repository.JpaRepository; import java.util.List; public interface SubWritesRepository extends JpaRepository<SubWritesEntity, Long> { // originalLink가 일치하는 댓글을 작성일 기준 오름차순으로 조회 List<SubWritesEntity> findByOriginalLinkOrderByWriteDateAsc(String originalLink); }
+
+2. Service 레이어 수정
+SongMainService에서 게시글 정보와 댓글 목록을 함께 가져올 수 있도록 비즈니스 로직을 구성합니다. (또는 댓글 서비스를 따로 주입받아도 됩니다.)
+java
+@Service 
+@RequiredArgsConstructor 
+public class SongMainService { 
+private final SongMainRepository songMainRepository; 
+private final SubWritesRepository subWritesRepository; 
+// 댓글 레포지토리 주입 // 게시글 상세 조회 
+public SongMainEntity getSongMainEntity(String id) { 
+return songMainRepository.findById(id) .orElseThrow(() -> new IllegalArgumentException("게시글이 없습니다. id=" + id)); } 
+// 댓글 목록 조회 public List<SubWritesEntity> getSubWritesList(String originalLink) { 
+return subWritesRepository.findByOriginalLinkOrderByWriteDateAsc(originalLink); } }
+
+3. Controller 수정 (Model에 추가)
+컨트롤러에서 id를 사용해 댓글 목록을 조회한 뒤, model에 subWritesList라는 이름으로 담아 타임리프로 보냅니다.
+java
+@RequestMapping("/song-main") 
+@RequiredArgsConstructor 
+@Controller 
+public class SongMainController { 
+private final SongMainService songMainService; 
+@GetMapping(value = "/{id}") public String songMainDetail(Model model, @PathVariable("id") String id) { // 1. 게시글 상세 조회 
+SongMainEntity songMainEntity = this.songMainService.getSongMainEntity(id); 
+// 2. 해당 게시글의 댓글 목록 조회 (현재 페이지의 id가 original_link 조건이 됨) 
+List<SubWritesEntity> subWritesList = this.songMainService.getSubWritesList(id); 
+// 3. Model에 두 데이터 모두 담기 
+model.addAttribute("songMainEntity", songMainEntity); 
+model.addAttribute("subWritesList", subWritesList); 
+// 타임리프에서 사용할 이름 return "SongMain/SongMain"; } }
+
+
+───
+
+💡 타임리프(HTML)에서 댓글 출력하는 팁
+컨트롤러에서 넘겨준 subWritesList는 타임리프의 th:each 문법을 사용해 반복문으로 화면에 그릴 수 있습니다. SongMain.html 파일 내부 적절한 위치에 아래와 같이 추가해 보세요.
+html
+<!-- 댓글 영역 예시 --> <div class="comment-section"> <h3>댓글 목록</h3> <ul> <!-- subWritesList를 반복하며 comment 변수에 담음 --> 
+<li th:each="comment : ${subWritesList}"> 
+<span th:text="${comment.writer}">작성자</span>: <span th:text="${comment.content}">댓글 내용</span> (<span th:text="${#temporals.format(comment.writeDate, 'yyyy-MM-dd HH:mm')}">작성일</span>) </li> </ul> </div>
+
+현재 데이터베이스 프레임워크로 Spring Data JPA를 쓰고 계신가요, 아니면 MyBatis를 쓰고 계신가요? 기술 스택에 맞춰 정확한 리포지토리 코드나 XML 쿼리를 다시 작성해 드릴 수 있습니다. 편하게 말씀해 주세요!
+
+ㅡㅡㅡㅡㅡㅡㅡㅡㅡ
+
+현재 페이지 주소와 댓글 테이블의 값이 일치하는지 확인하고 연결하는 핵심 고리는 컨트롤러 메서드의 @PathVariable("id") String id 파라미터입니다.
+브라우저가 서버에 요청을 보낼 때부터 데이터베이스를 조회할 때까지, 값이 어떻게 매칭되는지 흐름을 이해하시면 명확해집니다.
+
+───
+
+🔍 데이터가 매칭되는 4단계 흐름
+1. 사용자가 브라우저에서 주소를 입력합니다.
+◦ 주소: http://localhost:8080/song-main/song123
+◦ 여기서 현재 페이지의 고유 ID는 song123이 됩니다.
+2. 컨트롤러가 주소에서 id 값을 추출합니다.
+◦ @GetMapping(value = "/{id}") 설정 덕분에, 스프링은 URL 맨 뒤에 붙은 song123을 @PathVariable("id") String id 변수에 자동으로 할당합니다.
+◦ 즉, 자바 코드 안에서 id 변수의 값은 "song123"이 됩니다.
+3. 이 id 값을 댓글 조회 메서드의 인자로 전달합니다.
+◦ this.songMainService.getSubWritesList(id); 코드를 실행하면서 "song123"이라는 문자열을 서비스와 레포지토리로 넘겨줍니다.
+4. 데이터베이스(DB)에서 SQL 쿼리가 실행됩니다.
+◦ 레포지토리가 이 값을 받아서 실제 DB에 다음과 같은 SQL 쿼리를 날리게 됩니다.
+◦ SELECT * FROM sub_writes_entity WHERE original_link = 'song123' ORDER BY write_date;
+◦ 결과적으로 댓글 테이블의 original_link 컬럼 값이 'song123'인 데이터만 똑똑하게 골라서 가져오게 됩니다.
+
+───
+
+💡 요약하자면
+"현재 페이지 주소"라는 눈에 보이는 URL을 스프링 컨트롤러가 id라는 자바 변수로 변환해 주었고, 이 변수를 그대로 DB 쿼리의 WHERE original_link = ? 조건에 집어넣었기 때문에 두 값이 정확하게 일치하는 댓글만 화면에 나타나게 되는 것입니다.
+만약 실제 주소창에 들어가는 URL이 /song-main/123 형태가 아니라 다른 파라미터(예: ?link=abc)를 사용하거나 전체 URL 주소(http://...)가 통째로 DB에 저장되어 있는 상태인가요?
+현재 DB의 original_link 컬럼에 어떤 형식(예: 숫자 ID, 영어 문자열, 혹은 전체 URL)으로 데이터가 들어가 있는지 알려주시면 매칭 로직을 더 정확하게 점검해 드릴 수 있습니다.
+
+
+
+'id','int','NO','PRI',NULL,'auto_increment'
+'content','varchar(255)','YES','',NULL,''
+'original_link','varchar(255)','YES','',NULL,''
+'author_userid','varchar(255)','YES','MUL',NULL,''
+'write_date','datetime(6)','YES','',NULL,''
+
+----------------=-=-=-=-=-
+
+
+use doruri_springboot;
+
+desc song_main_entity;
+
+drop table sub_writes_entity;
+
+
+insert into sub_writes_entity
+values
+(1, "구름구름", "akmu-blooming", "kimgroomi", "2026-09-27 10:10:10");
+
+select *
+from login_users;
+
+desc sub_writes_entity;
+
+select *
+from sub_writes_entity;
