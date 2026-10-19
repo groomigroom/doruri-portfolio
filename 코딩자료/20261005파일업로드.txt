@@ -1,0 +1,29 @@
+'userid','varchar(50)','NO','PRI',NULL,''
+'password','varchar(255)','NO','',NULL,''
+'username','varchar(50)','NO','',NULL,''
+'img_file_path','varchar(255)','YES','',NULL,''
+'file_name','varchar(255)','YES','',NULL,''
+
+
+form 태그 내에 <input type="file" name="imgFile">
+
+Srpingboot static 폴더 내에 이미지 받을 폴더 생성.
+
+LoginUserService에 throws Exception
+그리고 여기 signup에 매개 변수로 Multipartfile imgFile 쓰기
+
+그리고
+LoginUserService signup안에
+String imgFilePath = System.getPropery("user.dir") + "\\src\\main\\resources\\static\\세부경로";
+UUID uuid = UUID.randomUUID();
+String fileName = uuid + "_" + imgFile.getOriginalFileName();
+File saveImgFile = new File(imgFilePath, fileName);
+
+controller에서도 throws Exception
+
+-----------------------------------
+service에다가
+loginuserEntity.set위에 filepath랑 filename이랑
+그렇게해서 set여기 ()에 맞춰서 위에 2개꺼 담기
+
+filePath는 ()에 넣을 때, "/resources 바로 아래 폴더들 경로" + fileName); 
