@@ -1,0 +1,156 @@
+
+private String linkType;
+
+
+------------------------------
+
+package groomi.groomgroom.LikeLink;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface LikeLinkRepository extends JpaRepository<LikeLinkEntity, Integer> {
+    int countByOriginalLink(String originalLink);
+
+    boolean existsByOriginalLinkAndLikeUserid_Userid (
+        String originalLink,
+        String userid
+    );
+
+    void deleteByOriginalLinkAndLikeUserid_Userid(
+        String originalLink,
+        String userid
+    );
+}
+
+
+
+-----------------------------------------------------------------------------------------===================
+
+
+package groomi.groomgroom.LikeLink;
+
+import groomi.groomgroom.Login.LoginUserService;
+import groomi.groomgroom.Login.LoginUsers;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+@RequiredArgsConstructor
+@Service
+public class LikeLinkService {
+    private final LikeLinkRepository likeLinkRepository;
+    private final LoginUserService loginUserService;
+
+############################################################################
+    public void addLike(String originalLink, String userId, String linkType) {
+
+        // 💡 3. 주입받은 서비스를 통해 안전하게 실제 LoginUsers 객체를 찾아옵니다.
+        LoginUsers user = this.loginUserService.getLoginUser(userId);
+
+        boolean exists = likeLinkRepository
+                .existsByOriginalLinkAndLikeUserid_Userid(
+                        originalLink,
+                        user.getUserid()
+                );
+        if (!exists) {
+            LikeLinkEntity like = new LikeLinkEntity();
+            like.setOriginalLink(originalLink);
+############################################################################
+            like.setLinkType(linkType);
+            like.setLikeUserid(user);
+
+            likeLinkRepository.save(like);
+        }
+    }
+
+    @Transactional
+    public void deleteLike(String originalLink, String userId) {
+        LoginUsers user2 = this.loginUserService.getLoginUser(userId);
+
+        likeLinkRepository
+                .deleteByOriginalLinkAndLikeUserid_Userid(
+                        originalLink,
+                        user2.getUserid()
+                );
+    }
+
+    public boolean isLiked(String originalLink, String userId) {
+
+        return likeLinkRepository
+                .existsByOriginalLinkAndLikeUserid_Userid(
+                        originalLink,
+                        userId
+                );
+    }
+}
+
+#######################################################################################################
+
+
+package groomi.groomgroom.LikeLink;
+
+import groomi.groomgroom.SongMain.SongMainService;
+import jakarta.servlet.http.HttpSession;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+
+import java.security.Principal;
+
+@RequestMapping("/like-link")
+@RequiredArgsConstructor
+@Controller
+public class LikeLinkController {
+    private final LikeLinkService likeLinkService;
+    //#####
+    private final SongMainService songMainService;
+
+    @PostMapping("/toggle-like/song")
+    public ResponseEntity<?> addLike(@RequestBody LikeRequest request,
+                                     Principal principal) {
+
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("로그인이 필요합니다.");
+        }
+
+        String userId = principal.getName();
+
+        System.out.println("글 ID " + request.getOriginalLink());
+        System.out.println("사용자 ID " + userId);
+
+        likeLinkService.addLike(request.getOriginalLink(), userId, "song");
+
+        //#####
+        int likeCount =
+                songMainService.getLikeLinkCount(
+                        request.getOriginalLink()
+                );
+
+        return ResponseEntity.ok(likeCount);
+    }
+
+    //#####
+    @DeleteMapping("/toggle-like/song")
+    public ResponseEntity<?> deleteLike(@RequestBody LikeRequest request,
+                                        Principal principal) {
+
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("로그인이 필요합니다.");
+        }
+        String userId = principal.getName();
+
+        likeLinkService.deleteLike(request.getOriginalLink(), userId);
+
+        //#####
+        int likeCount =
+                songMainService.getLikeLinkCount(
+                        request.getOriginalLink()
+                );
+
+        return ResponseEntity.ok(likeCount);
+    }
+}
