@@ -1,1 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Title</title>
+</head>
+<body>
+    <p class="login_user_name">로그인 해주세요</p>
+    <button onclick="init()">버튼</button>
+    <script>
+        const login_user_name = document.querySelector(".login_user_name");
+        let login_user = "";
+        async function getUserInfo() {
+            try {
+                const response = await fetch('/login/login-data');
 
+                // 💡 401 권한 없음(로그아웃 상태)일 때는 에러를 터뜨리지 않고
+                // "로그인 해주세요" 상태를 부드럽게 유지하도록 턴을 넘겨줍니다.
+                if (response.status === 401) {
+                    console.log("현재 비로그인 상태입니다.");
+                    login_user_name.textContent = "로그인 해주세요";
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error('데이터를 가져오는데 실패했습니다.');
+                }
+
+                const data = await response.json(); // JSON으로 읽기
+
+                if (data.isLoggedIn) {
+                    console.log("로그인된 사용자 ID:", data.userId);
+                    login_user_name.textContent = data.userId;
+                    login_user = data.userId;
+                }
+            } catch (error) {
+                console.error('에러 발생:', error);
+            }
+        }
+
+        getUserInfo();
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+
+            if (parts.length === 2) {
+                return parts.pop().split(';').shift();
+            }
+
+            return null;
+        }
+
+        async function init() {
+
+            try {
+                // 1. CSRF 토큰 발급
+                const csrfResponse = await fetch("/event-boolean/csrf-token", {
+                    method: "GET",
+                    credentials: "same-origin"
+                });
+
+                if (!csrfResponse.ok) {
+                    throw new Error("CSRF 토큰 발급 실패");
+                }
+
+                const csrfData = await csrfResponse.json();
+
+                console.log("CSRF 토큰 발급 완료");
+
+                // 2. 로그인 사용자 확인 및 POST 요청
+                const response = await fetch("/event-boolean/registration", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {
+                        "Content-Type": "application/json",
+                        [csrfData.headerName]: csrfData.token
+                    },
+                    body: JSON.stringify({
+                        originalLink: "tesdfgdfddd222"
+                    })
+                });
+
+                const result = await response.text();
+
+                if (response.ok) {
+                    alert(result);
+                } else {
+                    alert(result);
+                }
+
+            } catch (error) {
+                console.error("네트워크 에러:", error);
+            }
+        }
+
+    </script>
+</body>
+</html>
